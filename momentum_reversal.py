@@ -91,4 +91,4 @@ def momentum_reversal(k_max, ret):
     plt.title('Average Cross-Sectional Return Response by Lag')
     plt.show()
 
-    return betas, ret
+    return betas

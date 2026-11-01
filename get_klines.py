@@ -3,7 +3,11 @@ import requests as _requests
 import time
 import threading
 from pathlib import Path
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+
 
 # -------------------------------------------------------------------------
 # SETTINGS
@@ -168,6 +172,24 @@ def get_all_klines(symbol, interval, start_date, end_date):
 # 2nd step: downloads all symbols (your function + workers)
 # -------------------------------------------------------------------------
 def get_prices(t_interval, start_date, end_date, until):
+
+    ticker_data = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
+    # Convert the API response to a DataFrame
+    ticker_data = pd.DataFrame(ticker_data)
+
+    # Convert volume to numeric values
+    ticker_data["quoteVolume"] = pd.to_numeric(
+    ticker_data["quoteVolume"],
+    errors="coerce"
+    )
+
+    top_symbols = (
+        ticker_data[ticker_data["symbol"].str.endswith("USDT")]
+        .sort_values("quoteVolume", ascending=False)
+        .head(1000)["symbol"]
+        .tolist()
+    )
+    oldest_symbols=top_symbols
     
     symbols = oldest_symbols[:until]
 
