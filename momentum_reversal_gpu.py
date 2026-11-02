@@ -5,19 +5,49 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from pathlib import Path
 import cupy as cp
+import os
 
 
-def main(k_max,ret):
+def main(k_max, ret, out_dir="betas", overwrite=False):
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     ret_g = cp.asarray(ret.to_numpy(dtype="float32"))
-    frames = []
+
     for k in range(1, k_max + 1):
+        path = out_dir / f"k={k:05d}.parquet"
+        if path.exists() and not overwrite:      # lets you resume after a crash
+            continue
+
         res = fm_lag_gpu(ret_g, k)
         df = pd.DataFrame(res, index=ret.index[k:],
-                      columns=["alpha", "gamma", "t_stat", "n_obs"]).dropna()
-        df["k"] = k
-        frames.append(df.set_index("k", append=True))
-    betas = pd.concat(frames)
-    return betas
+                          columns=["alpha", "gamma", "t_stat", "n_obs"]).dropna()
+
+        # write to a temp file, then rename, so an interrupted run never leaves a corrupt file
+        tmp = path.with_suffix(".tmp")
+        df.astype("float32").to_parquet(tmp)
+        os.replace(tmp, path)
+
+        if k % 100 == 0:
+            print(f"k={k}/{k_max}")
+            cp.get_default_memory_pool().free_all_blocks()   # release cached GPU memory
+
+
+def load_betas(out_dir="betas", ks=None, cols=None):
+    """Long format like your old output: MultiIndex (k, time). Pass a subset of ks to stay light."""
+    out_dir = Path(out_dir)
+    if ks is None:
+        ks = sorted(int(p.stem.split("=")[1]) for p in out_dir.glob("k=*.parquet"))
+    frames = [pd.read_parquet(out_dir / f"k={k:05d}.parquet", columns=cols) for k in ks]
+    return pd.concat(frames, keys=ks, names=["k"])
+
+
+def load_wide(col="gamma", out_dir="betas", ks=None):
+    """One column (e.g. gamma or t_stat) as a time x k matrix."""
+    out_dir = Path(out_dir)
+    if ks is None:
+        ks = sorted(int(p.stem.split("=")[1]) for p in out_dir.glob("k=*.parquet"))
+    cols = {k: pd.read_parquet(out_dir / f"k={k:05d}.parquet", columns=[col])[col] for k in ks}
+    return pd.concat(cols, axis=1)
 
 def fm_lag_gpu(ret_g, k, CH=20000):
     # Cross-sectional regressions r(i,t) = alpha + gamma * r(i,t-k) for every t >= k
