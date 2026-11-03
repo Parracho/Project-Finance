@@ -94,8 +94,9 @@ def alloc(sleeves, method="rp", window=1344, every=48, cost_bp=0.0, delta=0.5, m
     return pd.DataFrame(A, index=G.index, columns=keys)
 
 def main(ret,sig):
+    print("This is the new update")
     sched = {"rev": (8, 1), "mom": (16, 1), "size": (48, 0.05)} # (H, kappa) per sleeve; tune these
-    sl = {k: sleeve(weights(-sig[k], 0.1), ret, H=sched[k][0], kappa=sched[k][1]) for k in sig}
+    sl = {k: sleeve(weights(sig[k], 0.1), ret, H=sched[k][0], kappa=sched[k][1]) for k in sig}
     cost_bp = 0
     a  = alloc(sl, method="mv", cost_bp=2)   # or "rp"; rows sum to 1, or 0 if no sleeve survives
     bt = combine(sl, a)  
